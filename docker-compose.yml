@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sgla_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sgla}
+      POSTGRES_USER: ${POSTGRES_USER:-sgla_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sgla_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sgla_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sgla_web
+    command: >
+      sh -c "python backend/manage.py migrate &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4"
+    environment:
+      DEBUG: ${DEBUG:-False}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DATABASE_URL: postgres://${POSTGRES_USER:-sgla_user}:${POSTGRES_PASSWORD:-sgla_password}@db:5432/${POSTGRES_DB:-sgla}
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-e7l5$6nkmucy!v7p_e%g73yv^3h8(-5l+1z!o_fkq6u1vh7wh*}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  postgres_data:
